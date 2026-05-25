@@ -10,7 +10,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 
-import { getChannel, getOrCreateUserId, store } from './store';
+import { getChannel, getLastUpdateCheck, getOrCreateUserId, setChannel, store } from './store';
 
 export interface UpdateCheckResponse {
   hasUpdate: boolean;
@@ -28,6 +28,12 @@ export interface UpdatePayload {
   action: UpdateCheckResponse['action'];
 }
 
+export interface UpdateCheckResult {
+  status: 'available' | 'mandatory' | 'none' | 'error';
+  message: string;
+  update?: UpdatePayload;
+}
+
 const CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;
 const INITIAL_DELAY_MS = 5_000;
 
@@ -37,10 +43,30 @@ let downloadedInstallerPath: string | null = null;
 let isDownloading = false;
 
 function getUpdateServerUrl(): string {
-  return (
-    process.env.NEXT_PUBLIC_UPDATE_SERVER_URL ??
-    'https://our-admin-api.com/update/check'
-  );
+  const configPath = path.join(app.getPath('userData'), 'update-config.json');
+
+  try {
+    if (fs.existsSync(configPath)) {
+      const config = JSON.parse(fs.readFileSync(configPath, 'utf8')) as {
+        updateServerUrl?: string;
+      };
+      if (config.updateServerUrl) {
+        return config.updateServerUrl;
+      }
+    }
+  } catch {
+    // ignore invalid config
+  }
+
+  const configured =
+    process.env.UPDATE_SERVER_URL ??
+    process.env.NEXT_PUBLIC_UPDATE_SERVER_URL;
+
+  if (configured) {
+    return configured;
+  }
+
+  return 'http://localhost:3000/update/check';
 }
 
 function getMainWindow(): BrowserWindow | null {
@@ -71,6 +97,7 @@ function buildCheckUrl(): string {
 
 async function fetchUpdateCheck(): Promise<UpdateCheckResponse | null> {
   const url = buildCheckUrl();
+  console.log('[updater] Checking for updates:', url);
 
   return new Promise((resolve) => {
     const request = net.request({ method: 'GET', url });
@@ -211,49 +238,79 @@ async function downloadViaAutoUpdater(data: UpdateCheckResponse): Promise<void> 
   }
 }
 
-async function performUpdateCheck(): Promise<void> {
+async function performUpdateCheck(): Promise<UpdateCheckResult> {
   try {
     store.set('lastUpdateCheck', Date.now());
 
     const data = await fetchUpdateCheck();
     if (!data) {
-      return;
+      const message = `Could not reach update server at ${getUpdateServerUrl()}`;
+      console.warn(`[updater] ${message}`);
+      sendToRenderer('update-check-error', { message });
+      return { status: 'error', message };
     }
 
     if (data.action === 'none' || !data.hasUpdate) {
       sendToRenderer('update-not-available');
-      return;
+      return { status: 'none', message: `You are on the latest version (${data.version || app.getVersion()}).` };
     }
 
     pendingUpdate = data;
+    const payload = toUpdatePayload(data);
 
     if (data.mandatory) {
-      sendToRenderer('update-mandatory', toUpdatePayload(data));
+      sendToRenderer('update-mandatory', payload);
     } else {
-      sendToRenderer('update-available', toUpdatePayload(data));
+      sendToRenderer('update-available', payload);
     }
 
     if (data.action === 'downgrade') {
-      await downloadUpdateDirectly(data);
-      return;
+      void downloadUpdateDirectly(data);
+      return {
+        status: data.mandatory ? 'mandatory' : 'available',
+        message: `Update ${data.version} is ready.`,
+        update: payload,
+      };
     }
 
     if (data.action === 'update') {
-      await downloadViaAutoUpdater(data);
+      if (process.platform === 'darwin') {
+        void downloadUpdateDirectly(data);
+      } else {
+        void downloadViaAutoUpdater(data);
+      }
+
+      return {
+        status: data.mandatory ? 'mandatory' : 'available',
+        message: `Update ${data.version} is available.`,
+        update: payload,
+      };
     }
+
+    return { status: 'none', message: 'No update needed.' };
   } catch (error) {
+    const message = error instanceof Error ? error.message : 'Update check failed';
     console.warn('[updater] Update check failed:', error);
+    sendToRenderer('update-check-error', { message });
+    return { status: 'error', message };
   }
 }
 
 function installDownloadedUpdate(): void {
   if (downloadedInstallerPath && fs.existsSync(downloadedInstallerPath)) {
-    spawn(downloadedInstallerPath, ['/S'], {
-      detached: true,
-      stdio: 'ignore',
-    }).unref();
-    app.quit();
-    return;
+    if (process.platform === 'darwin') {
+      spawn('open', [downloadedInstallerPath], { detached: true, stdio: 'ignore' }).unref();
+      return;
+    }
+
+    if (process.platform === 'win32') {
+      spawn(downloadedInstallerPath, ['/S'], {
+        detached: true,
+        stdio: 'ignore',
+      }).unref();
+      app.quit();
+      return;
+    }
   }
 
   autoUpdater.quitAndInstall();
@@ -293,12 +350,24 @@ function setupAutoUpdaterEvents(): void {
 }
 
 function registerIpcHandlers(): void {
-  ipcMain.handle('updates:check', async () => {
-    await performUpdateCheck();
-  });
+  ipcMain.handle('updates:check', async () => performUpdateCheck());
 
   ipcMain.handle('updates:restart-and-install', () => {
     installDownloadedUpdate();
+  });
+
+  ipcMain.handle('app:get-info', () => ({
+    version: app.getVersion(),
+    userId: getOrCreateUserId(),
+    channel: getChannel(),
+    lastUpdateCheck: getLastUpdateCheck(),
+    updateServerUrl: getUpdateServerUrl(),
+    platform: process.platform,
+  }));
+
+  ipcMain.handle('app:set-channel', (_event, channel: 'stable' | 'beta') => {
+    setChannel(channel);
+    return getChannel();
   });
 }
 

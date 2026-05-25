@@ -11,6 +11,21 @@ export interface UpdateProgressPayload {
   percent: number;
 }
 
+export interface UpdateCheckResult {
+  status: 'available' | 'mandatory' | 'none' | 'error';
+  message: string;
+  update?: UpdatePayload;
+}
+
+export interface AppInfo {
+  version: string;
+  userId: string;
+  channel: 'stable' | 'beta';
+  lastUpdateCheck: number;
+  updateServerUrl: string;
+  platform: string;
+}
+
 type Unsubscribe = () => void;
 
 function subscribe<T>(
@@ -29,6 +44,11 @@ function subscribe<T>(
 }
 
 contextBridge.exposeInMainWorld('electronAPI', {
+  app: {
+    getInfo: (): Promise<AppInfo> => ipcRenderer.invoke('app:get-info'),
+    setChannel: (channel: 'stable' | 'beta'): Promise<'stable' | 'beta'> =>
+      ipcRenderer.invoke('app:set-channel', channel),
+  },
   updates: {
     onUpdateAvailable: (callback: (payload: UpdatePayload) => void): Unsubscribe =>
       subscribe<UpdatePayload>('update-available', callback),
@@ -45,7 +65,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onUpdateNotAvailable: (callback: () => void): Unsubscribe =>
       subscribe<void>('update-not-available', () => callback()),
 
-    triggerUpdateCheck: (): Promise<void> => ipcRenderer.invoke('updates:check'),
+    onUpdateCheckError: (callback: (payload: { message: string }) => void): Unsubscribe =>
+      subscribe<{ message: string }>('update-check-error', callback),
+
+    triggerUpdateCheck: (): Promise<UpdateCheckResult> =>
+      ipcRenderer.invoke('updates:check'),
 
     restartAndInstall: (): Promise<void> => ipcRenderer.invoke('updates:restart-and-install'),
   },

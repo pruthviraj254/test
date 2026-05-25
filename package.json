@@ -1,7 +1,7 @@
 {
   "name": "betauser-test",
   "productName": "betauser-test",
-  "version": "1.1.0",
+  "version": "2.0.0",
   "description": "My Electron application description",
   "main": ".webpack/main",
   "private": true,

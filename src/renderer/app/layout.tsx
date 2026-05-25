@@ -1,12 +1,13 @@
 import type { Metadata } from 'next';
 
+import ClientLayout from '../components/ClientLayout';
 import UpdateManager from '../components/UpdateManager';
 
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'BetaUser Test',
-  description: 'Electron Forge + Next.js auto-update test app',
+  title: 'OneRx Desktop',
+  description: 'Electron desktop app with controlled auto-updates',
 };
 
 export default function RootLayout({
@@ -17,7 +18,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="min-h-screen bg-slate-950 text-slate-100 antialiased">
-        {children}
+        <ClientLayout>{children}</ClientLayout>
         <UpdateManager />
       </body>
     </html>

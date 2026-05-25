@@ -30,3 +30,11 @@ export function getOrCreateUserId(): string {
 export function getChannel(): UpdateChannel {
   return store.get('channel');
 }
+
+export function setChannel(channel: UpdateChannel): void {
+  store.set('channel', channel);
+}
+
+export function getLastUpdateCheck(): number {
+  return store.get('lastUpdateCheck');
+}
