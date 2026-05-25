@@ -1,4 +1,5 @@
 import type { ForgeConfig } from '@electron-forge/shared-types';
+import { MakerDMG } from '@electron-forge/maker-dmg';
 import { MakerZIP } from '@electron-forge/maker-zip';
 import { PublisherGithub } from '@electron-forge/publisher-github';
 import { AutoUnpackNativesPlugin } from '@electron-forge/plugin-auto-unpack-natives';
@@ -35,6 +36,7 @@ const config: ForgeConfig = {
         },
       },
     },
+    new MakerDMG({}, ['darwin']),
     new MakerZIP({}, ['darwin']),
   ],
   publishers: [

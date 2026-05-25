@@ -1,4 +1,4 @@
-name: Release Windows
+name: Release
 
 on:
   push:
@@ -14,56 +14,93 @@ env:
 
 jobs:
   build-windows:
-    name: Build NSIS installer
+    name: Build NSIS (Windows)
     runs-on: windows-latest
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Sync package version from git tag
+      - name: Sync version from tag
         if: startsWith(github.ref, 'refs/tags/v')
         shell: pwsh
         run: |
           $version = $env:GITHUB_REF -replace '^refs/tags/v', ''
           npm version $version --no-git-tag-version --allow-same-version
 
-      - name: Build Next.js + NSIS installer
+      - run: npm ci
+
+      - name: Build NSIS installer
         shell: pwsh
         env:
           NEXT_PUBLIC_UPDATE_SERVER_URL: ${{ vars.UPDATE_SERVER_URL }}
           UPDATE_PUBLISH_URL: ${{ vars.UPDATE_PUBLISH_URL }}
           UPDATE_CHANNEL: ${{ vars.UPDATE_CHANNEL || 'stable' }}
-        run: npm run make
+        run: npm run make:win
 
-      - name: List build output
-        shell: pwsh
-        run: Get-ChildItem -Path out/make -Recurse | Select-Object FullName, Length
-
-      - name: Upload Windows installer artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: windows-installer
+          name: windows-build
           path: |
             out/make/nsis/**/*.exe
             out/make/nsis/**/*.yml
           if-no-files-found: error
-          retention-days: 30
 
-      - name: Publish to GitHub Releases
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
+  build-mac:
+    name: Build DMG (macOS)
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
         with:
-          files: |
-            out/make/nsis/**/*.exe
-            out/make/nsis/**/*.yml
+          node-version: 20
+          cache: npm
+
+      - name: Sync version from tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          npm version $VERSION --no-git-tag-version --allow-same-version
+
+      - run: npm ci
+
+      - name: Build DMG
+        env:
+          NEXT_PUBLIC_UPDATE_SERVER_URL: ${{ vars.UPDATE_SERVER_URL }}
+          UPDATE_PUBLISH_URL: ${{ vars.UPDATE_PUBLISH_URL }}
+          UPDATE_CHANNEL: ${{ vars.UPDATE_CHANNEL || 'stable' }}
+        run: npm run make:mac
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mac-build
+          path: |
+            out/make/**/*.dmg
+            out/make/zip/**/*.zip
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    needs: [build-windows, build-mac]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: List release files
+        run: find dist -type f | sort
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/**/*
           generate_release_notes: true

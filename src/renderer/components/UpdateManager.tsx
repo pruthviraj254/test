@@ -93,10 +93,15 @@ export default function UpdateManager() {
   return (
     <>
       {phase === 'mandatory' && updateInfo && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/90 p-6">
-          <div className="w-full max-w-lg rounded-2xl border border-slate-700 bg-slate-900 p-8 shadow-2xl">
-            <div className="mb-2 text-sm font-semibold uppercase tracking-wide text-amber-400">
-              Required Update
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/95 p-6 backdrop-blur-sm">
+          <div className="w-full max-w-lg rounded-2xl border border-amber-500/30 bg-slate-900 p-8 shadow-2xl shadow-amber-500/10">
+            <div className="mb-4 flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-500/20 text-lg">
+                ⚠
+              </div>
+              <div className="text-sm font-semibold uppercase tracking-wide text-amber-400">
+                Required Update
+              </div>
             </div>
             <h2 className="mb-3 text-2xl font-bold text-white">
               Version {updateInfo.version} must be installed
@@ -146,7 +151,7 @@ export default function UpdateManager() {
       )}
 
       {showBanner && updateInfo && (
-        <div className="fixed bottom-4 right-4 z-40 w-full max-w-md rounded-xl border border-slate-700 bg-slate-900 p-4 shadow-xl">
+        <div className="fixed bottom-4 right-4 z-40 w-full max-w-md rounded-2xl border border-blue-500/20 bg-slate-900/95 p-4 shadow-2xl shadow-blue-500/10 backdrop-blur-sm">
           <div className="mb-1 flex items-start justify-between gap-3">
             <div>
               <div className="text-sm font-semibold text-white">
